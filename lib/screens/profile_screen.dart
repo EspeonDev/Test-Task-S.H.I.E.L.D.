@@ -325,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: threatColor.withOpacity(0.2),
+                    color: threatColor.withValues(alpha: 0.2),
                     border: Border.all(color: threatColor),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -386,7 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.9),
+          color: Colors.black.withValues(alpha: 0.9),
           border: const Border(bottom: BorderSide(color: Colors.red, width: 2)),
         ),
         child: Row(
