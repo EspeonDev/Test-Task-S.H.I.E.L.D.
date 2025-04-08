@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shield_command_center/constants/app_style.dart';
 import 'package:shield_command_center/models/mission_model.dart';
 
@@ -10,23 +11,62 @@ class MissionsScreen extends StatefulWidget {
 }
 
 class _MissionsScreenState extends State<MissionsScreen> {
-  void _takeMission(Mission mission) {
-    setState(() {
-      MissionRepository.availableMissions.remove(mission);
-      MissionRepository.myMissions.add(
-        Mission(
-          id: mission.id,
-          name: mission.name,
-          location: mission.location,
-          threatLevel: mission.threatLevel,
-          status: 'In Progress',
-          team: 'My Team',
-        ),
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<Mission> _availableMissions = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMissions();
+  }
+
+  // Потім перенесу в mission_service але для вашого ревью залишу тут
+  Future<void> _loadMissions() async {
+    try {
+      QuerySnapshot querySnapshot =
+          await _firestore
+              .collection('missions')
+              .where('status', isEqualTo: 'Available')
+              .get();
+
+      setState(() {
+        _availableMissions =
+            querySnapshot.docs
+                .map((doc) => Mission.fromFirestore(doc))
+                .toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading missions: $e')));
+    }
+  }
+
+  // Потім перенесу в mission_service але для вашого ревью залишу тут
+  Future<void> _takeMission(Mission mission) async {
+    try {
+      await _firestore.collection('missions').doc(mission.id).update({
+        'status': 'In Progress',
+        'team': 'My Team',
+      });
+
+      setState(() {
+        _availableMissions.remove(mission);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Mission "${mission.name}" accepted!')),
       );
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Mission "${mission.name}" accepted!')),
-    );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error accepting mission: $e')));
+    }
   }
 
   @override
@@ -40,17 +80,20 @@ class _MissionsScreenState extends State<MissionsScreen> {
         ),
         backgroundColor: AppStyles.primaryColor,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: MissionRepository.availableMissions.length,
-        itemBuilder: (context, index) {
-          final mission = MissionRepository.availableMissions[index];
-          return _buildMissionCard(
-            mission,
-            onTake: () => _takeMission(mission),
-          );
-        },
-      ),
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _availableMissions.length,
+                itemBuilder: (context, index) {
+                  final mission = _availableMissions[index];
+                  return _buildMissionCard(
+                    mission,
+                    onTake: () => _takeMission(mission),
+                  );
+                },
+              ),
     );
   }
 

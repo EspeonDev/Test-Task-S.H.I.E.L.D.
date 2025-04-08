@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shield_command_center/constants/app_style.dart';
 import 'package:shield_command_center/models/mission_model.dart';
 
@@ -11,16 +12,47 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   bool _showFuryAlert = false;
+  List<Mission> _myMissions = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkMissionsLimit();
+    _loadMyMissions();
+  }
+
+  // Потім перенесу в mission_service але для вашого ревью залишу тут
+  Future<void> _loadMyMissions() async {
+    try {
+      QuerySnapshot querySnapshot =
+          await _firestore
+              .collection('missions')
+              .where('team', isEqualTo: 'My Team')
+              .where('status', isEqualTo: 'In Progress')
+              .get();
+
+      setState(() {
+        _myMissions =
+            querySnapshot.docs
+                .map((doc) => Mission.fromFirestore(doc))
+                .toList();
+        _isLoading = false;
+        _checkMissionsLimit();
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading missions: $e')));
+    }
   }
 
   void _checkMissionsLimit() {
-    if (MissionRepository.myMissions.length >= 5 && !_showFuryAlert) {
+    if (_myMissions.length >= 5 && !_showFuryAlert) {
       setState(() {
         _showFuryAlert = true;
       });
@@ -36,9 +68,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // Потім перенесу в mission_service але для вашого ревью залишу тут
+  Future<void> _dropMission(Mission mission) async {
+    try {
+      await _firestore.collection('missions').doc(mission.id).update({
+        'status': 'Available',
+        'team': 'Not assigned',
+      });
+
+      setState(() {
+        _myMissions.remove(mission);
+        _checkMissionsLimit();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mission "${mission.name}" dropped'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error dropping mission: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final fatigueLevel = MissionRepository.myMissions.length / 5;
+    final fatigueLevel = _myMissions.length / 5;
     final heroName = "Spider-Man";
     final heroImage = "assets/imgs/spiderman2.png";
     final heroCodeName = "Peter Parker";
@@ -56,75 +114,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             backgroundColor: AppStyles.primaryColor,
           ),
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildHeroCard(
-                  context,
-                  heroName,
-                  heroCodeName,
-                  clearanceLevel,
-                  joinedDate,
-                  fatigueLevel,
-                  heroImage,
-                ),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'My Missions',
-                        style: TextStyle(
-                          color: Colors.blueAccent,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+          body:
+              _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildHeroCard(
+                          context,
+                          heroName,
+                          heroCodeName,
+                          clearanceLevel,
+                          joinedDate,
+                          fatigueLevel,
+                          heroImage,
                         ),
-                      ),
-                      const Spacer(),
-                      Chip(
-                        label: Text(
-                          '${MissionRepository.myMissions.length}/5',
-                          style: const TextStyle(color: Colors.white),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'My Missions',
+                                style: TextStyle(
+                                  color: Colors.blueAccent,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Spacer(),
+                              Chip(
+                                label: Text(
+                                  '${_myMissions.length}/5',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                backgroundColor:
+                                    fatigueLevel >= 1
+                                        ? Colors.red
+                                        : fatigueLevel >= 0.8
+                                        ? Colors.orange
+                                        : Colors.green,
+                              ),
+                            ],
+                          ),
                         ),
-                        backgroundColor:
-                            fatigueLevel >= 1
-                                ? Colors.red
-                                : fatigueLevel >= 0.8
-                                ? Colors.orange
-                                : Colors.green,
-                      ),
-                    ],
-                  ),
-                ),
-
-                MissionRepository.myMissions.isEmpty
-                    ? const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'No active missions. Visit Missions screen to accept new assignments.',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
-                        textAlign: TextAlign.center,
-                      ),
-                    )
-                    : ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      itemCount: MissionRepository.myMissions.length,
-                      itemBuilder: (context, index) {
-                        final mission = MissionRepository.myMissions[index];
-                        return _buildMissionCard(mission);
-                      },
+                        _myMissions.isEmpty
+                            ? const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'No active missions. Visit Missions screen to accept new assignments.',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                            : ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _myMissions.length,
+                              itemBuilder: (context, index) {
+                                final mission = _myMissions[index];
+                                return _buildMissionCard(mission);
+                              },
+                            ),
+                      ],
                     ),
-              ],
-            ),
-          ),
+                  ),
         ),
-
         if (_showFuryAlert) _buildFuryAlert(context),
       ],
     );
@@ -264,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: threatColor.withValues(alpha: 0.2),
+                    color: threatColor.withOpacity(0.2),
                     border: Border.all(color: threatColor),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -325,7 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.9),
+          color: Colors.black.withOpacity(0.9),
           border: const Border(bottom: BorderSide(color: Colors.red, width: 2)),
         ),
         child: Row(
@@ -348,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   Text(
-                    'Agent! You have ${MissionRepository.myMissions.length} active missions. '
+                    'Agent! You have ${_myMissions.length} active missions. '
                     'Even Avengers have limits. Drop some missions immediately!',
                     style: const TextStyle(color: Colors.white),
                   ),
@@ -367,35 +428,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
-  }
-
-  void _dropMission(Mission mission) {
-    setState(() {
-      MissionRepository.myMissions.remove(mission);
-      MissionRepository.availableMissions.add(
-        Mission(
-          id: mission.id,
-          name: mission.name,
-          location: mission.location,
-          threatLevel: mission.threatLevel,
-          status: 'Available',
-          team: 'Not assigned',
-        ),
-      );
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Mission "${mission.name}" dropped'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-
-    if (MissionRepository.myMissions.length < 5) {
-      setState(() {
-        _showFuryAlert = false;
-      });
-    }
   }
 
   Color _getThreatColor(String threatLevel) {

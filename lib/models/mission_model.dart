@@ -18,7 +18,6 @@ class Mission {
   });
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'name': name,
       'location': location,
       'threatLevel': threatLevel,
@@ -40,7 +39,7 @@ class Mission {
   }
 }
 
-// Заглушка
+// Заглушка вже не треба. Дані з фаербейса беруться тепер.
 class MissionRepository {
   static List<Mission> availableMissions = [
     Mission(
